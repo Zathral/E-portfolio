@@ -15,7 +15,9 @@ document.body.insertAdjacentHTML("beforeend", `<footer id="contact"><div class="
 // page transition
 const cur = $(".curtain");
 function reveal() {
-  cur.style.transition = "none"; cur.className = "curtain cover"; cur.offsetWidth; cur.style.transition = "";
+  cur.style.transition = "none"; cur.className = "curtain cover";
+  document.documentElement.classList.remove("rt");
+  cur.offsetWidth; cur.style.transition = "";
   requestAnimationFrame(() => { cur.className = "curtain leave"; document.body.classList.add("go"); });
 }
 document.addEventListener("click", e => {
@@ -43,18 +45,6 @@ if (L && !sessionStorage.seen) {
   })(t0);
 } else { if (L) L.remove(); reveal(); }
 
-// word-split headings
-$$("[data-split]").forEach(el => {
-  let i = 0;
-  const walk = n => [...n.childNodes].forEach(c => {
-    if (c.nodeType === 3) {
-      const f = document.createDocumentFragment();
-      c.textContent.split(/(\s+)/).forEach(w => { if (!w.trim()) return f.append(" "); const s = document.createElement("span"); s.className = "w"; s.innerHTML = `<span style="transition-delay:${.08 * i++ + .2}s">${w}</span>`; f.append(s); });
-      c.replaceWith(f);
-    } else walk(c);
-  });
-  walk(el);
-});
 
 // scroll: progress, nav state, reveal
 const prog = $(".prog"), nav = $(".nav");
@@ -68,14 +58,28 @@ const observe = () => $$(".rv:not(.in)").forEach(el => io.observe(el));
 // cursor, magnetic, tilt
 if (fine) {
   const c = document.createElement("div"); c.className = "cur"; document.body.append(c);
+  c.style.opacity = 0;
   let x = 0, y = 0, cx = 0, cy = 0;
-  addEventListener("mousemove", e => { x = e.clientX; y = e.clientY; });
+  addEventListener("mousemove", e => { x = e.clientX; y = e.clientY; c.style.opacity = 1;});
   (function l() { cx += (x - cx) * .2; cy += (y - cy) * .2; c.style.transform = `translate(${cx}px,${cy}px)`; requestAnimationFrame(l); })();
   document.addEventListener("mouseover", e => c.classList.toggle("big", !!e.target.closest("a,.row,figure,.btn")));
-  document.addEventListener("mousemove", e => $$(".mag").forEach(m => {
-    const r = m.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
-    m.style.transform = Math.hypot(dx, dy) < 90 ? `translate(${dx * .25}px,${dy * .35}px)` : "";
-  }));
+  const mags = $$(".mag"), clamp = (v, m) => Math.max(-m, Math.min(m, v));
+  addEventListener("mousemove", e => {
+    let hit = null, best = Infinity;
+    for (const m of mags) {
+      const r = m.getBoundingClientRect();
+      // subtract our own offset so the button's movement doesn't feed back into the measurement
+      const cx = r.left - (m._x || 0) + r.width / 2, cy = r.top - (m._y || 0) + r.height / 2;
+      const dx = e.clientX - cx, dy = e.clientY - cy;
+      const near = Math.abs(dx) < r.width / 2 + 20 && Math.abs(dy) < r.height / 2 + 20;
+      const d = Math.hypot(dx, dy);
+      if (near && d < best) { best = d; hit = { m, dx, dy }; }
+    }
+    for (const m of mags) {
+      if (hit && hit.m === m) { m._x = clamp(hit.dx * .25, 8); m._y = clamp(hit.dy * .35, 8); m.style.transform = `translate(${m._x}px,${m._y}px)`; }
+      else if (m._x || m._y) { m._x = m._y = 0; m.style.transform = ""; }
+    }
+  }, { passive: true });
   const pt = $(".portrait");
   if (pt) addEventListener("mousemove", e => pt.style.transform = `perspective(800px) rotateY(${(e.clientX / innerWidth - .5) * 8}deg) rotateX(${(.5 - e.clientY / innerHeight) * 6}deg)`);
 }
@@ -100,7 +104,7 @@ if (list) {
 const main = $("#main");
 if (main) {
   const i = P.findIndex(p => p.slug === new URLSearchParams(location.search).get("p"));
-  if (i < 0) location.replace("index.html");
+  if (i < 0) { location.replace("index.html"); return; }
   const p = P[i], nx = P[(i + 1) % P.length];
   document.title = `${p.title} · ${S.name}`;
   const sec = ([h, c]) => `<div class="body rv"><h2>${h}</h2><div class="t">${c.map(x => Array.isArray(x) ? `<ul>${x.map(l => `<li>${l}</li>`).join("")}</ul>` : `<p>${x}</p>`).join("")}</div></div>`;
@@ -110,7 +114,7 @@ if (main) {
 ${p.links.length ? `<div class="links fade" style="margin-bottom:40px">${p.links.map(([t, u]) => `<a class="btn dk mag" href="${u}" target="_blank" rel="noopener">${t} ↗</a>`).join("")}</div>` : ""}
 <div class="hero-img rv">${img(p.cover, p.title)}</div></div>
 <div class="wrap">${p.sections.map(sec).join("")}
-${p.videos.length ? `<div class="body rv"><h2>Watch</h2><div class="vids">${p.videos.map(vid).join("")}</div></div>` : ""}
+${p.videos.length ? `<div class="body rv"><h2>Fall Demo</h2><div class="vids">${p.videos.map(vid).join("")}</div></div>` : ""}
 ${p.gallery.length ? `<div class="body rv"><h2>Gallery</h2><div class="gal">${p.gallery.map((g, k) => `<figure data-k="${k}">${img(g, g[2])}<figcaption>${g[2]}</figcaption></figure>`).join("")}</div></div>` : ""}
 <a class="next" href="project.html?p=${nx.slug}"><p class="eyebrow">Next project</p><h2>${nx.title} →</h2></a></div>
 <div class="lb"><img alt=""><p></p></div>`;
@@ -122,8 +126,22 @@ ${p.gallery.length ? `<div class="body rv"><h2>Gallery</h2><div class="gal">${p.
   lb.onclick = () => lb.classList.remove("on");
   addEventListener("keydown", e => { if (!lb.classList.contains("on")) return; if (e.key === "Escape") lb.classList.remove("on"); if (e.key === "ArrowRight") show(k + 1); if (e.key === "ArrowLeft") show(k - 1); });
 }
-function split_again() { /* project headings are built after the first split pass, so split them here */
-  $$("[data-split]:not([data-done])").forEach(el => { el.dataset.done = 1; const t = el.textContent; el.innerHTML = t.split(" ").map((w, i) => `<span class="w"><span style="transition-delay:${.08 * i + .2}s">${w}</span></span>`).join(" "); });
+function splitWords(el) {
+  let i = 0;
+  const walk = n => [...n.childNodes].forEach(c => {
+    if (c.nodeType !== 3) return walk(c);
+    const f = document.createDocumentFragment();
+    c.textContent.split(/(\s+)/).forEach(w => {
+      if (!w) return;
+      if (!w.trim()) return f.append(" ");
+      const o = document.createElement("span"), s = document.createElement("span");
+      o.className = "w"; s.textContent = w; s.style.transitionDelay = `${.08 * i++ + .2}s`;
+      o.append(s); f.append(o);
+    });
+    c.replaceWith(f);
+  });
+  walk(el);
 }
+$$("[data-split]").forEach(splitWords);
 observe();
 })();
